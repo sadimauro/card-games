@@ -2,10 +2,9 @@
                                                        
 import random       
                
-import logging                                                              
-loglevel = logging.ERROR
-logging.basicConfig(level=loglevel)                    
-                                                       
+from .log import logger
+from . import utils
+
 _suits = ['spade', 'heart', 'diamond', 'club']         
 _ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 _rankVals = {'A': 1,                                   
@@ -81,47 +80,88 @@ _ppCodes = {\
             ('club', 'K'):  ('K\u2663', '\U0001F0DE')}
 
 class Deck:
-    """A class to create and manipulate a standard 52-card deck.
-    TODO: add a more complete comment.
-    """
+    """A class to create and manipulate a standard playing card 
+    deck.
+    
+    If special args are not set, defaults to creating aa deck of 52 cards.
+    
+    If cards_list is specified, a Deck with exactly those cards will be created.
+    
+    If no_cards is specified, then a random assortment of cards (no_cards many 
+    of them) will be created, with repeats or not (as specified in the argument).
 
-    def __init__(self, shuffle=True, orderfirst='suit'):
-        self.cards = []
 
-        if orderfirst == 'suit':
-            for suit in _suits:
-                for rank in _ranks:
-                    self.cards.append(Card(suit=suit, rank=rank))
-        elif orderfirst == 'rank':
-            for rank in _ranks:
-                for suit in _suits:
-                    self.cards.append(Card(suit=suit, rank=rank))
+    The Cards in the Deck are stored as a list; index 0 is the 'top' of the deck."""
+
+    def __init__(self, cards_list=None, no_cards=None, repeats=False, shuffle=True, orderfirst='suit'):
+        self.cards = None
+
+        if cards_list:
+            logger.debug('creating deck with specified cards')
+            self.cards = cards_list
+        
+        elif no_cards:
+            if no_cards > 0:
+                logger.debug('creating deck of len {}'.format(no_cards))
+                if not self.cards:
+                    self.cards = []
+                if repeats:
+                    for i in range(no_cards):
+                        self.cards.append(Card())
+                else:
+                    if no_cards > 52:
+                        logger.warn("can't promise no repeats with a deck this big")
+                    # todo - there is a better way to do this.
+                    temp_set = set()
+                    while len(temp_set) < no_cards:
+                        c = Card()
+                        if c not in temp_set:
+                            temp_set.add(c)
+                        else:
+                            logger.debug('already found card in set')
+                    self.cards = list(temp_set)
         else:
-            logging.error("bad order indicated: {}".format(order))
-            return
-
+            logger.debug('creating standard 52-card desk')
+            if not self.cards:
+                self.cards = []
+            if orderfirst == 'suit':
+                for suit in _suits:
+                    for rank in _ranks:
+                        self.cards.append(Card(suit=suit, rank=rank))
+            elif orderfirst == 'rank':
+                for rank in _ranks:
+                    for suit in _suits:
+                        self.cards.append(Card(suit=suit, rank=rank))
+            else:
+                logger.error("bad order indicated: {}".format(order))
+                return
+            
         if shuffle:
             self.shuffle()
 
     def shuffle(self):
         random.shuffle(self.cards)
 
-
-    def getIterator(self):
+    def get_iterator(self):
         """Return an iterator for the current Deck.
         """
-        # Create a new deck if one doesn't exist.
-        if not self.cards:
-            self.__init__()
         for i in range(len(self.cards)):
             yield self.cards[i]
 
     def deal(self, count=1):
         """Pop cards from the deck, removing them and also
         returning them as a Hand.
+
+        Note that the Card at index 0 is the 'top' of the deck,
+        and is the next one popped.
+
+        >>> test_deck = Deck(cards=[Card('diamond', '5'), Card('spade', '6')], shuffle=False)
+
+        >>> test_deck.deal(1)
+        <Hand: len=1>
         """
         if count > len(self.cards):
-            logging.error("cannot deal {} cards from a deck of size {}".format(str(count), str(len(self.cards))))
+            logger.error("cannot deal {} cards from a deck of size {}".format(str(count), str(len(self.cards))))
             return None
         retlist = []
         for i in range(count):
@@ -134,28 +174,20 @@ class Deck:
         else:
             return "<Deck: len {}; top card {}>".format(str(len(self.cards)), self.cards[0].__str__())
 
-    def __str__(self):
-        """TODO: Add desc and also doctests.
+    def __str__(self, indent=0, width=0):
+        """Print Deck.  Add newlines after printing 'indent' Cards.
+        If width == 0, don't add any newlines.
         """
-        count = 0
-        width = 9999 # TODO: do this more smartly
-        retstr = ''
-        for thiscard in self.cards:
-            retstr += "{0:3} ".format(thiscard.__str__())
-            count += 1
-            if count == width:
-                retstr += '\n'
-                count = 0
-        return retstr
+        return utils.str_items(self.cards, indent=indent, width=width)
 
-    def print(self):
-        return self.__str__()
-
-    def printImages(self):
-        retstr = ''
-        for card in self.cards:
-            retstr += "{0:2} ".format(card.printImage())
-        return retstr
+    def print(self, indent=0, width=0):
+        """Print Deck.  Add newlines after printing 'width' Cards.
+        If width == 0, don't add any newlines.
+        """
+        return utils.print_items(self.cards, indent=indent, width=width)
+    
+    #def print_images(self, indent=0, width=0):
+    #    print(utils.str_items(self.cards, fn=Card.str_image, indent=indent, width=width))
 
 class Hand:
     """A list of Cards.
@@ -167,7 +199,7 @@ class Hand:
     def __repr__(self):
         return "<Hand: len={}>".format(len(self.cards))
 
-    def __str__(self):
+    def __str__(self, indent=0, width=0):
         """Print the hand.
 
         >>> a = Hand([Card(suit='diamond', rank='5'), Card(suit='club', rank='10')])
@@ -175,12 +207,9 @@ class Hand:
         >>> a.__str__()
         '5♦  10♣ '
         """
-        retstr = ''
-        for card in self.cards:
-            retstr += "{0:3} ".format(card.print())
-        return retstr
-
-    def print(self):
+        return utils.str_items(self.cards, indent=indent, width=width)
+        
+    def print(self, indent=0, width=0):
         """Print the card in a simple way (<rank><suit>).
         Same as __str__().
 
@@ -189,13 +218,10 @@ class Hand:
         >>> a.print()
         '5♦  10♣ '
         """
-        return self.__str__()
+        return utils.print_items(self.cards, indent=indent, width=width)
 
-    def printImages(self):
-        retstr = ''
-        for card in self.cards:
-            retstr += "{0:2} ".format(card.printImage())
-        return retstr
+    #def print_images(self, indent=0, width=0):
+    #    print(utils.str_items(self.cards, fn=Card.str_image, indent=indent, width=width))
 
 class Card:
     """A playing card.  Has a rank and suit.
@@ -213,7 +239,7 @@ class Card:
             self.suit = random.choice(_suits)
         else:
             if suit not in _suits:
-                logging.error('suit "{}" not one of {}'.format(suit, str(_suits)))
+                logger.error('suit "{}" not one of {}'.format(suit, str(_suits)))
             else:
                 self.suit = suit
 
@@ -221,37 +247,43 @@ class Card:
             self.rank = random.choice(_ranks)
         else:
             if rank not in _ranks:
-                logging.error('rank "{}" not one of {}'.format(rank, str(_ranks)))
+                logger.error('rank "{}" not one of {}'.format(rank, str(_ranks)))
             else:
                 self.rank = rank
 
-    def getRank(self):
+    def __eq__(self, other):
+        return (self.suit == other.suit and self.rank == other.rank)
+
+    def __hash__(self):
+        return hash((self.suit, self.rank))
+
+    def get_rank(self):
         """Return the rank of the card.
 
         >>> a = Card(suit='diamond', rank='5')
 
-        >>> a.getRank()
+        >>> a.get_rank()
         '5'
         """
         return self.rank
 
-    def getSuit(self):
+    def get_suit(self):
         """Return the suit of the card.
 
         >>> a = Card(suit='diamond', rank='5')
 
-        >>> a.getSuit()
+        >>> a.get_suit()
         'diamond'
         """
         return self.suit
 
-    def getValue(self):                                                                                                                                                                                                                                                       
+    def get_value(self):                                                                                                                                                                                                                                                       
         """All of these values won't make sense                                                                                                                                                                                                                               
         for every game.                                                                                                                                                                                                                                                       
 
         >>> a = Card(suit='diamond', rank='5')
 
-        >>> a.getValue()
+        >>> a.get_value()
         5
         """
         return _rankVals[self.rank]
@@ -269,6 +301,9 @@ class Card:
         """
         return _ppCodes[(self.suit, self.rank)][0]
 
+    def str_image(self):
+        return __ppCodes[(self.suit, self.rank)][1]
+
     def print(self):
         """Print the card in a simple way (<rank><suit>).
         Same as __str__().
@@ -278,19 +313,18 @@ class Card:
         >>> a.print()
         '5♦'
         """
-        return self.__str__()
+        print('{0:4}'.format(self.__str__()), end='')
 
-    def printImage(self):
+    def print_image(self):
         """Print the unicode image of the card.
 
         >>> a = Card(suit='diamond', rank='5')
 
-        >>> a.printImage()
+        >>> a.print_image()
         '🃅'
         """
-        return _ppCodes[(self.suit, self.rank)][1]
+        print('{0:2}'.format(_ppCodes[(self.suit, self.rank)][1]), end='')
 
 if __name__ == '__main__':
     import doctest
     doctest.testmod()
-
